@@ -46,6 +46,15 @@ function callsIn(text: string, context: TextContext = { fence: null, lineStart: 
   return calls;
 }
 
+/** Recognizes one eligible block immediately echoed a second time, with no intervening text. */
+function repeatedCallIn(text: string, context?: TextContext): SerializedToolCall | undefined {
+  const first = callsIn(text, context)[0];
+  if (!first) return undefined;
+  const block = text.slice(first.start, first.end);
+  if (text.slice(first.end) !== block) return undefined;
+  return { ...first, end: text.length };
+}
+
 /** Splits safe visible text from a possible control block while carrying Markdown context across chunks. */
 export function splitAtPossibleSerializedToolCall(
   text: string,
@@ -249,6 +258,12 @@ function duplicatedSerializedToolCallRanges(
   context?: TextContext,
 ): { start: number; end: number }[] {
   if (structuredCalls.length === 0) return [];
+  const repeated = repeatedCallIn(text, context);
+  if (repeated && structuredCalls.length === 1
+      && structuredCalls[0]!.names.has(repeated.name)
+      && inputFromArguments(structuredCalls[0]!.argumentsText)?.trimEnd() === repeated.body.trimEnd()) {
+    return [{ start: repeated.start, end: repeated.end }];
+  }
   return callsIn(text, context).filter(call => {
     const body = call.body.trimEnd();
     return structuredCalls.some(structured =>
@@ -277,6 +292,20 @@ export function repairArgumentsDuplicatedBesideSerializedCall(
   functionNames: ReadonlySet<string>,
   serializedText: string,
 ): string {
+  const repeated = repeatedCallIn(serializedText);
+  if (repeated && functionNames.has(repeated.name)) {
+    const body = repeated.body.trimEnd();
+    try {
+      const parsed = JSON.parse(argumentsText) as unknown;
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+          && Object.keys(parsed).length === 1
+          && (parsed as Record<string, unknown>).input === body + body) {
+        return JSON.stringify({ input: body });
+      }
+    } catch {
+      // The existing malformed-JSON repair below may still apply.
+    }
+  }
   try {
     JSON.parse(argumentsText);
     return argumentsText;
