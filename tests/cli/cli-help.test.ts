@@ -6,12 +6,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Database } from "bun:sqlite";
 import { EXPORT_CLIENT_IDS } from "../../src/clients/config-export";
+import { isSystemd, unitPath } from "../../src/service/systemd";
 import { SPAWN_BUDGET_MS } from "../helpers/test-budget";
 import { removeTreeWithRetry } from "../helpers/remove-tree";
 
 const repoRoot = dirname(fileURLToPath(new URL("../../package.json", import.meta.url)));
 const cliPath = join(repoRoot, "src", "cli", "index.ts");
 const binPath = join(repoRoot, "bin", "ocx.mjs");
+const dockerHost = process.platform === "linux" && existsSync("/.dockerenv");
 
 // Every case below spawns the real CLI. A hung child without a spawnSync timeout can
 // pin the whole shard for the full 15-minute CI budget (observed on Linux test 3/4
@@ -197,7 +199,9 @@ describe("CLI subcommand help", () => {
       expect(result.stdout).toContain("Default provider: openai");
       expect(result.stdout).toContain("Codex autostart: disabled");
       expect(result.stdout).toContain("Service:");
-      expect(result.stdout).toContain(join(opencodexHome, "service.log"));
+      if (dockerHost) expect(result.stdout).toContain("Service: unsupported in Docker");
+      else if (process.platform === "linux" && !isSystemd()) expect(result.stdout).toContain("Service: unsupported: systemd not found");
+      else expect(result.stdout).toContain(join(opencodexHome, "service.log"));
       expect(result.stdout).toContain("Codex autostart shim");
       // #2411: status must name the routing kind it already computes. The
       // proxy is down in this fixture, so the unused-proxy warning must stay
@@ -411,9 +415,13 @@ describe("CLI subcommand help", () => {
     expect(result.stdout).toContain("Usage: ocx start [--port <port>] [--socks5 [host:port] | --socks5-off]");
   });
 
-  test("invalid service and codex-shim usage include remove alias", () => {
+  test("invalid service and codex-shim usage fail with platform guidance", () => {
     const cases = [
-      { args: ["service", "nope"], expected: "Usage: ocx service [install|repair|restart|start|stop|status|uninstall|remove|claim]" },
+      { args: ["service", "nope"], expected: dockerHost
+        ? "Docker detected. Run 'ocx start' directly instead of using the service manager."
+        : process.platform === "linux" && !isSystemd() && !existsSync(unitPath())
+          ? "systemd not found. Run 'ocx start' under your process supervisor."
+          : "Usage: ocx service [install|repair|restart|start|stop|status|uninstall|remove|claim]" },
       { args: ["codex-shim", "nope"], expected: "Usage: ocx codex-shim <install|status|uninstall|remove>" },
     ];
 
