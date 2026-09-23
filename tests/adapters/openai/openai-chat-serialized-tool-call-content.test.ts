@@ -53,6 +53,29 @@ test("buffered Chat responses reconcile two identical echoed blocks and doubled 
   });
 });
 
+test("buffered Chat responses suppress two echoed blocks when structured input is already single", async () => {
+  const script = "text('ok');";
+  const block = `<tool_call><function=exec>${script}</parameter></function></tool_call>`;
+  const events = await createOpenAIChatAdapter(provider).parseResponse!(Response.json({
+    choices: [{
+      message: {
+        content: block + block,
+        tool_calls: [{
+          id: "call_exec",
+          function: { name: "exec", arguments: JSON.stringify({ input: script }) },
+        }],
+      },
+      finish_reason: "tool_calls",
+    }],
+  }), createTestTranslatorBudget());
+
+  expect(events.filter(event => event.type === "text_delta")).toEqual([]);
+  expect(events.find(event => event.type === "tool_call_delta")).toEqual({
+    type: "tool_call_delta",
+    arguments: JSON.stringify({ input: script }),
+  });
+});
+
 test("buffered Chat responses preserve repeated markup when the structured input differs", async () => {
   const script = "text('example');";
   const content = `<tool_call><function=exec>${script}</function></tool_call>`.repeat(2);
