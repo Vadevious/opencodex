@@ -9,15 +9,16 @@ import { removeTreeWithRetry } from "../helpers/remove-tree";
 import { repoPath } from "../helpers/repo-root";
 
 describe("wsl.conf automount root", () => {
-  test.skipIf(process.platform !== "linux")("loads the home resolver first in a fresh WSL process", async () => {
+  test("loads and expands the home resolver first in a fresh WSL-like process", async () => {
     const home = mkdtempSync(join(tmpdir(), "ocx-wsl-import-"));
     try {
       const child = Bun.spawn([process.execPath, "--eval", `
-        const { wslAutomountRoot } = await import("./src/codex/home.ts");
+        const { wslAutomountRoot, resolveCodexHomeDir } = await import("./src/codex/home.ts");
         console.log(wslAutomountRoot({ wslConf: null }));
+        console.log(resolveCodexHomeDir());
       `], {
         cwd: repoPath(),
-        env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: "", WSL_DISTRO_NAME: "Ubuntu" },
+        env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: "~/.codex", WSL_DISTRO_NAME: "Ubuntu" },
         stdout: "pipe",
         stderr: "pipe",
         timeout: 10_000,
@@ -29,7 +30,7 @@ describe("wsl.conf automount root", () => {
       ]);
       expect(stderr).toBe("");
       expect(exitCode).toBe(0);
-      expect(stdout.trim()).toBe("/mnt");
+      expect(stdout.trim().split(/\r?\n/)).toEqual(["/mnt", join(home, ".codex")]);
     } finally {
       removeTreeWithRetry(home);
     }
