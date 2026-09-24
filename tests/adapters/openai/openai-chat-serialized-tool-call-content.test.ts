@@ -76,6 +76,67 @@ test("buffered Chat responses suppress two echoed blocks when structured input i
   });
 });
 
+test("buffered Chat responses suppress two echoed blocks with a trailing newline", async () => {
+  const script = "text('ok');";
+  const block = `<tool_call><function=exec>${script}</parameter></function></tool_call>`;
+  const events = await createOpenAIChatAdapter(provider).parseResponse!(Response.json({
+    choices: [{
+      message: {
+        content: block + block + "\n",
+        tool_calls: [{ id: "call_exec", function: { name: "exec", arguments: JSON.stringify({ input: script }) } }],
+      },
+      finish_reason: "tool_calls",
+    }],
+  }), createTestTranslatorBudget());
+
+  expect(events.filter(event => event.type === "text_delta")).toEqual([]);
+  expect(events.find(event => event.type === "tool_call_delta")).toEqual({
+    type: "tool_call_delta", arguments: JSON.stringify({ input: script }),
+  });
+});
+
+test("buffered Chat responses repair two echoed blocks with newline-joined input", async () => {
+  const script = "text('ok');";
+  const block = `<tool_call><function=exec>${script}</parameter></function></tool_call>`;
+  const events = await createOpenAIChatAdapter(provider).parseResponse!(Response.json({
+    choices: [{
+      message: {
+        content: block + block,
+        tool_calls: [{ id: "call_exec", function: { name: "exec", arguments: JSON.stringify({ input: script + "\n" + script }) } }],
+      },
+      finish_reason: "tool_calls",
+    }],
+  }), createTestTranslatorBudget());
+
+  expect(events.filter(event => event.type === "text_delta")).toEqual([]);
+  expect(events.find(event => event.type === "tool_call_delta")).toEqual({
+    type: "tool_call_delta", arguments: JSON.stringify({ input: script }),
+  });
+});
+
+test("buffered Chat responses suppress a repeated echo beside an unrelated structured call", async () => {
+  const script = "text('ok');";
+  const block = `<tool_call><function=exec>${script}</parameter></function></tool_call>`;
+  const events = await createOpenAIChatAdapter(provider).parseResponse!(Response.json({
+    choices: [{
+      message: {
+        content: block + block,
+        tool_calls: [
+          { id: "call_exec", function: { name: "exec", arguments: JSON.stringify({ input: script }) } },
+          { id: "call_other", function: { name: "other", arguments: JSON.stringify({ input: "other" }) } },
+        ],
+      },
+      finish_reason: "tool_calls",
+    }],
+  }), createTestTranslatorBudget());
+
+  expect(events.filter(event => event.type === "text_delta")).toEqual([]);
+  expect(events.filter(event => event.type === "tool_call_delta")).toEqual([
+    { type: "tool_call_delta", arguments: JSON.stringify({ input: script }) },
+    { type: "tool_call_delta", arguments: JSON.stringify({ input: "other" }) },
+  ]);
+});
+
 test("buffered Chat responses preserve repeated markup when the structured input differs", async () => {
   const script = "text('example');";
   const content = `<tool_call><function=exec>${script}</function></tool_call>`.repeat(2);

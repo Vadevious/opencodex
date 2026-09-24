@@ -51,7 +51,7 @@ function repeatedCallIn(text: string, context?: TextContext): SerializedToolCall
   const first = callsIn(text, context)[0];
   if (!first) return undefined;
   const block = text.slice(first.start, first.end);
-  if (text.slice(first.end) !== block) return undefined;
+  if (text.slice(first.end).trimEnd() !== block.trimEnd()) return undefined;
   return { ...first, end: text.length };
 }
 
@@ -259,10 +259,11 @@ function duplicatedSerializedToolCallRanges(
 ): { start: number; end: number }[] {
   if (structuredCalls.length === 0) return [];
   const repeated = repeatedCallIn(text, context);
-  if (repeated && structuredCalls.length === 1
-      && structuredCalls[0]!.names.has(repeated.name)
-      && inputFromArguments(structuredCalls[0]!.argumentsText)?.trimEnd() === repeated.body.trimEnd()) {
-    return [{ start: repeated.start, end: repeated.end }];
+  if (repeated) {
+    const matching = structuredCalls.filter(structured =>
+      structured.names.has(repeated.name)
+      && inputFromArguments(structured.argumentsText)?.trimEnd() === repeated.body.trimEnd());
+    if (matching.length === 1) return [{ start: repeated.start, end: repeated.end }];
   }
   return callsIn(text, context).filter(call => {
     const body = call.body.trimEnd();
@@ -299,7 +300,8 @@ export function repairArgumentsDuplicatedBesideSerializedCall(
       const parsed = JSON.parse(argumentsText) as unknown;
       if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
           && Object.keys(parsed).length === 1
-          && (parsed as Record<string, unknown>).input === body + body) {
+          && ((parsed as Record<string, unknown>).input === body + body
+            || (parsed as Record<string, unknown>).input === body + "\n" + body)) {
         return JSON.stringify({ input: body });
       }
     } catch {

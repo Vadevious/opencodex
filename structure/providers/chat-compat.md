@@ -328,9 +328,10 @@ and removes the block only when its function name and
 freeform body match a structured call's parsed `input` in the same response. If the gateway also prefixes the structured call's JSON
 arguments with the same freeform body, the adapter keeps the JSON suffix only when the block body,
 prefix, and wrapper's `input` value all agree. Mismatched markup and arguments remain byte-exact.
-Two immediately adjacent identical bare blocks are suppressed when one matching structured call
-has either one copy of their body as `input`, or exactly two copies that can be reduced to one.
-Other repeated shapes remain unchanged.
+Two immediately adjacent identical bare blocks, with optional trailing whitespace, are suppressed
+when exactly one structured call matches their function and has either one copy of their body as
+`input`, or two copies joined directly or by one newline that can be reduced to one. Unrelated
+structured calls do not prevent suppression. Other repeated shapes remain unchanged.
 Silent held-content frames emit adapter heartbeats. Terminal errors and transport read failures
 drain all held text, including matching serialized blocks, because pending tools are not dispatched.
 The held bytes use the shared translator budget. For a model opted into inline `<think>` splitting,

@@ -62,8 +62,9 @@ transport; it does not infer subscription attribution from the inbound protocol.
   collects `usage`. Providers listed in `reasoningDetailsModels` (MiniMax M-series) instead read
   structured `delta.reasoning_details` segments, whose `text` arrives as cumulative snapshots and
   is prefix-diffed, and replay preserved reasoning as a `reasoning_details` array.
-- Suppresses bare `<tool_call>` text when it exactly duplicates a structured call. Two adjacent
-  identical blocks are also collapsed when that one call's input contains their body twice;
+- Suppresses bare `<tool_call>` text when it duplicates a structured call. Two adjacent identical
+  blocks are also collapsed when one matching call has either a single input body or two copies
+  joined directly or by one newline. Trailing whitespace after the pair is suppressed;
   mismatched or example markup remains visible.
 - ClinePass uses the live-verified gateway format `reasoning: { enabled: true, effort }` (or
   `{ enabled: false }` when reasoning is disabled); its public API docs do not currently specify
