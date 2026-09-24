@@ -330,8 +330,10 @@ arguments with the same freeform body, the adapter keeps the JSON suffix only wh
 prefix, and wrapper's `input` value all agree. Mismatched markup and arguments remain byte-exact.
 Two immediately adjacent identical bare blocks, with optional trailing whitespace, are suppressed
 when exactly one structured call matches their function and has either one copy of their body as
-`input`, or two copies joined directly or by one newline that can be reduced to one. Unrelated
-structured calls do not prevent suppression. Other repeated shapes remain unchanged.
+`input`, or two copies joined directly or by one newline that can be reduced to one. Reducing a
+doubled `input` requires an arguments object with no keys besides `input`; extra keys leave it
+unchanged. Unrelated structured calls do not prevent suppression. Other repeated shapes remain
+unchanged.
 Silent held-content frames emit adapter heartbeats. Terminal errors and transport read failures
 drain all held text, including matching serialized blocks, because pending tools are not dispatched.
 The held bytes use the shared translator budget. The streaming hold is bounded (`ingestStreaming`): once a closed block is followed by more than 8 KiB of prose with no block open after it, or held text plus queued events would pass 4 MiB, everything held is released in order with nothing suppressed, so an unmatched block no longer delays the rest of the answer to the end of the turn. A duplicate is the tail of the content, so its reconciliation is unaffected; past either bound the stream prefers delivery (the pre-#5548 raw markup) over suppression. Buffered responses keep the unbounded `ingest` because their structured calls are already known (`tests/adapters/openai/openai-chat-serialized-tool-call-hold-bound.test.ts`). For a model opted into inline `<think>` splitting,
