@@ -301,6 +301,7 @@ function duplicatedSerializedToolCallRanges(
       structured.names.has(repeated.name)
       && inputFromArguments(structured.argumentsText)?.trimEnd() === repeated.body.trimEnd());
     if (matching.length === 1) return [{ start: repeated.start, end: repeated.end }];
+    return [];
   }
   return callsIn(text, context).filter(call => {
     const body = call.body.trimEnd();

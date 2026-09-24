@@ -137,6 +137,31 @@ test("buffered Chat responses suppress a repeated echo beside an unrelated struc
   ]);
 });
 
+test("buffered Chat responses preserve repeated markup when two structured calls match", async () => {
+  const script = "text('ok');";
+  const block = `<tool_call><function=exec>${script}</parameter></function></tool_call>`;
+  const content = block + block;
+  const argumentsText = JSON.stringify({ input: script });
+  const events = await createOpenAIChatAdapter(provider).parseResponse!(Response.json({
+    choices: [{
+      message: {
+        content,
+        tool_calls: [
+          { id: "call_one", function: { name: "exec", arguments: argumentsText } },
+          { id: "call_two", function: { name: "exec", arguments: argumentsText } },
+        ],
+      },
+      finish_reason: "tool_calls",
+    }],
+  }), createTestTranslatorBudget());
+
+  expect(events.filter(event => event.type === "text_delta")).toEqual([{ type: "text_delta", text: content }]);
+  expect(events.filter(event => event.type === "tool_call_delta")).toEqual([
+    { type: "tool_call_delta", arguments: argumentsText },
+    { type: "tool_call_delta", arguments: argumentsText },
+  ]);
+});
+
 test("buffered Chat responses preserve repeated markup when the structured input differs", async () => {
   const script = "text('example');";
   const content = `<tool_call><function=exec>${script}</function></tool_call>`.repeat(2);
