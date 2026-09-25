@@ -237,6 +237,7 @@ export class SerializedToolCallContentBuffer {
 
   constructor(private readonly budget: TranslatorBudget) {}
 
+  /** Remembers visible text released before a later structured call can be reconciled. */
   private observeText(events: AdapterEvent[]): AdapterEvent[] {
     if (events.some(event => event.type === "text_delta" && event.text.trim() !== "")) this.releasedAnswerText = true;
     return events;
@@ -608,6 +609,7 @@ export function reconcileStructuredToolCalls(
       const body = hasParameterOpener
         ? freeformBody(wrappedBody.slice("<parameter=".length)) : wrappedBody;
       if (block.name === calls[0]!.wireName && body.trim() !== ""
+          && !/(?:^|\n)<tool_call>\s*<function=[^>\r\n]+>/.test(block.body)
           && !(hasParameterOpener && /^<parameter=[A-Za-z_$][\w$.-]*>/.test(wrappedBody))
           && !body.includes("<parameter=") && !body.includes("</parameter>")) {
         references[0] = { ...references[0]!, argumentsText: JSON.stringify({ input: body }),
@@ -618,6 +620,7 @@ export function reconcileStructuredToolCalls(
   return reduceUnambiguousDoubledInput(references, serializedText);
 }
 
+/** An empty JSON object means the structured freeform call supplied no input. */
 function emptyObjectArguments(text: string): boolean {
   try {
     const parsed: unknown = JSON.parse(text);

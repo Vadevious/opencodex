@@ -10,6 +10,7 @@ afterEach(() => {
   releaseSpendHome = undefined;
 });
 
+/** Checks the dispatched freeform input and visible text from a streamed Chat reply. */
 async function checkEchoedToolCall(
   repeated: boolean,
   trailingNewline = false,

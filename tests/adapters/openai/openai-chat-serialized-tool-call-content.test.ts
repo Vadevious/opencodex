@@ -105,6 +105,7 @@ test.each([
   { label: "preceding prose", model: "mimo-v2.6-pro", tools: [execTool], content: "Example only:\n<tool_call><function=exec>text(1)</parameter></function></tool_call>", calls: 1 },
   { label: "following prose", model: "mimo-v2.6-pro", tools: [execTool], content: "<tool_call><function=exec>text(1)</parameter></function></tool_call>\nExample only", calls: 1 },
   { label: "two possible blocks", model: "mimo-v2.6-pro", tools: [execTool], content: "<tool_call><function=exec>text(1)</parameter></function></tool_call>\n<tool_call><function=exec>text(2)</parameter></function></tool_call>", calls: 1 },
+  { label: "an unclosed block followed by a second block", model: "mimo-v2.6-pro", tools: [execTool], content: "<tool_call><function=exec>first\n<tool_call><function=exec>second</function></tool_call>", calls: 1 },
   { label: "two empty calls", model: "mimo-v2.6-pro", tools: [execTool], content: "<tool_call><function=exec>text(1)</parameter></function></tool_call>", calls: 2 },
   { label: "nested parameter opener", model: "mimo-v2.6-pro", tools: [execTool], content: "<tool_call><function=exec><parameter=text('<parameter=');</parameter></function></tool_call>", calls: 1 },
   { label: "named parameter wrapper", model: "mimo-v2.6-pro", tools: [execTool], content: "<tool_call><function=exec><parameter=input>text(1);</parameter></function></tool_call>", calls: 1 },
@@ -122,6 +123,26 @@ test.each([
   expect(events.filter(event => event.type === "tool_call_delta")).toEqual(
     Array.from({ length: calls }, () => ({ type: "tool_call_delta", arguments: "{}" })),
   );
+});
+
+test("streamed MiMo leaves an unclosed block followed by another block inert", async () => {
+  const first = "<tool_call><function=exec>first\n";
+  const second = "<tool_call><function=exec>second</function></tool_call>";
+  const adapter = withTestTranslatorBudget(createOpenAIChatAdapter(provider));
+  adapter.buildRequest({ modelId: "mimo-v2.6-pro", stream: true, options: {}, context: {
+    messages: [{ role: "user", content: "Use exec", timestamp: 0 }], tools: [execTool],
+  } });
+  const frames = [
+    { choices: [{ delta: { content: first } }] },
+    { choices: [{ delta: { content: second } }] },
+    { choices: [{ delta: { tool_calls: [{ index: 0, id: "call_exec", function: { name: "exec", arguments: "{}" } }] } }] },
+    { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+  ];
+  const body = frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n";
+  const events: AdapterEvent[] = [];
+  for await (const event of adapter.parseStream(new Response(body))) if (event.type !== "heartbeat") events.push(event);
+  expect(events.filter(event => event.type === "text_delta").map(event => event.text).join("")).toBe(first + second);
+  expect(events.filter(event => event.type === "tool_call_delta")).toEqual([{ type: "tool_call_delta", arguments: "{}" }]);
 });
 
 test("MiMo empty-input recovery requires the exact wire tool name", async () => {
