@@ -125,6 +125,24 @@ test.each([
   );
 });
 
+test("streamed non-MiMo response leaves an empty freeform call unchanged", async () => {
+  const block = "<tool_call><function=exec>text(1)</parameter></function></tool_call>";
+  const adapter = withTestTranslatorBudget(createOpenAIChatAdapter(provider));
+  adapter.buildRequest({ modelId: "other-model", stream: true, options: {}, context: {
+    messages: [{ role: "user", content: "ping", timestamp: 0 }], tools: [execTool],
+  } });
+  const frames = [
+    { choices: [{ delta: { content: block } }] },
+    { choices: [{ delta: { tool_calls: [{ index: 0, id: "call_exec", function: { name: "exec", arguments: "{}" } }] } }] },
+    { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+  ];
+  const body = frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n";
+  const events: AdapterEvent[] = [];
+  for await (const event of adapter.parseStream(new Response(body))) if (event.type !== "heartbeat") events.push(event);
+  expect(events.filter(event => event.type === "text_delta").map(event => event.text).join("")).toBe(block);
+  expect(events.filter(event => event.type === "tool_call_delta")).toEqual([{ type: "tool_call_delta", arguments: "{}" }]);
+});
+
 test("streamed MiMo leaves an unclosed block followed by another block inert", async () => {
   const first = "<tool_call><function=exec>first\n";
   const second = "<tool_call><function=exec>second</function></tool_call>";
