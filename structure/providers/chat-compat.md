@@ -326,7 +326,9 @@ start of a line outside Markdown fences; inline, quoted and indented examples re
 It holds a possible serialized block, resumes ordinary text delivery when the header cannot match,
 and removes the block only when its function name and
 freeform body match a structured call's parsed `input` or exact raw arguments from a declared
-freeform/custom tool in the same response. Malformed JSON on an ordinary function is not raw input.
+freeform/custom tool in the same response. Valid JSON primitives, arrays, and objects can be raw
+freeform input too; when the bridge would unwrap an alternate field, the JSON text is not treated
+as the executed input. Malformed JSON on an ordinary function is not raw input.
 A block may close a freeform body with a stray `</parameter>` and may omit `</function>`, and one
 newline after the function header is template layout, so MiMo's echoes of those shapes match too
 (#5724). Blocks are read by delimiter scan in linear time: the first `</tool_call>` preceded by
@@ -340,7 +342,8 @@ are suppressed only when exactly one structured call matches their function name
 body as `input` or exact raw arguments, or when one doubled `input` can be reduced to that body.
 Reducing a doubled `input` requires an arguments object with no keys besides `input`; extra keys
 leave it unchanged. When another same-function call also matches or doubles the body, neither
-arguments nor markup are changed because the response is ambiguous. Unrelated structured calls do not
+arguments nor markup are changed because the response is ambiguous. An empty block and its own
+empty-input call do not create a second explanation. Unrelated structured calls do not
 prevent suppression, and other repeated shapes remain unchanged.
 Silent held-content frames emit adapter heartbeats. Terminal errors and transport read failures
 drain all held text, including matching serialized blocks, because pending tools are not dispatched.

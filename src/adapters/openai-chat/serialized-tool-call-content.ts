@@ -1,5 +1,6 @@
 import type { TranslatorBudget } from "../../lib/translator-budget";
 import type { AdapterEvent } from "../../types";
+import { unwrapFreeformToolInput } from "../../responses/apply-patch-envelope";
 
 const OPEN_TAG = "<tool_call>";
 const CLOSE_TAG = "</tool_call>";
@@ -324,12 +325,17 @@ export class SerializedToolCallContentBuffer {
 }
 
 /** Reads a wrapped input or raw arguments from a declared freeform tool; neither path rewrites them. */
-function inputFromArguments(argumentsText: string, freeform = false): string | undefined {
+function inputFromArguments(argumentsText: string, freeform = false, toolName = ""): string | undefined {
   try {
     const parsed = JSON.parse(argumentsText) as unknown;
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-    const input = (parsed as Record<string, unknown>).input;
-    return typeof input === "string" ? input : undefined;
+    const input = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>).input
+      : undefined;
+    if (typeof input === "string") return input;
+    if (!freeform) return undefined;
+    // The bridge can unwrap alternate fields (for example exec's `cmd`). Such a JSON object
+    // is not an echo of its raw arguments, even when the visible block contains that JSON.
+    return unwrapFreeformToolInput(argumentsText, toolName) === argumentsText ? argumentsText : undefined;
   } catch {
     // Chat gateways can send custom-tool input as raw text. The Responses bridge dispatches
     // that text as the freeform input, so an identical bare block is still a duplicate.
@@ -351,14 +357,14 @@ function agreesWithRepeatedBlock(
   structured: StructuredToolCallReference,
   repeated: SerializedToolCall,
 ): boolean {
-  const input = structured.names.has(repeated.name) ? inputFromArguments(structured.argumentsText, structured.freeform) : undefined;
+  const input = structured.names.has(repeated.name) ? inputFromArguments(structured.argumentsText, structured.freeform, repeated.name) : undefined;
   return input !== undefined && freeformBody(input) === freeformBody(repeated.body);
 }
 
 /** A second call can explain a repeated pair even when its arguments cannot safely be rewritten. */
 function hasDoubledInput(structured: StructuredToolCallReference, repeated: SerializedToolCall): boolean {
   if (!structured.names.has(repeated.name)) return false;
-  const input = inputFromArguments(structured.argumentsText, structured.freeform);
+  const input = inputFromArguments(structured.argumentsText, structured.freeform, repeated.name);
   if (input === undefined) return false;
   const body = freeformBody(repeated.body);
   const normalized = freeformBody(input);
@@ -377,13 +383,13 @@ function duplicatedSerializedToolCallRanges(
     // A doubled call beside an agreeing call leaves the pair ambiguous. If reduction was
     // refused, keep the markup too: otherwise the visible text and executable call disagree.
     const matching = structuredCalls.filter(structured => agreesWithRepeatedBlock(structured, repeated));
-    const doubled = structuredCalls.some(structured => hasDoubledInput(structured, repeated));
+    const doubled = structuredCalls.some(structured => structured !== matching[0] && hasDoubledInput(structured, repeated));
     return matching.length === 1 && !doubled ? [{ start: repeated.start, end: repeated.end }] : [];
   }
   return callsIn(text, context).filter(call => {
     const body = freeformBody(call.body);
     return structuredCalls.some(structured => {
-      const input = structured.names.has(call.name) ? inputFromArguments(structured.argumentsText, structured.freeform) : undefined;
+      const input = structured.names.has(call.name) ? inputFromArguments(structured.argumentsText, structured.freeform, call.name) : undefined;
       return input !== undefined && freeformBody(input) === body;
     });
   });
