@@ -322,7 +322,7 @@ export class SerializedToolCallContentBuffer {
   }
 }
 
-/** Reads only a string input from a JSON object; other argument shapes cannot prove duplication. */
+/** Reads a wrapped input or an exact raw freeform body; neither path rewrites the arguments. */
 function inputFromArguments(argumentsText: string): string | undefined {
   try {
     const parsed = JSON.parse(argumentsText) as unknown;
@@ -330,7 +330,9 @@ function inputFromArguments(argumentsText: string): string | undefined {
     const input = (parsed as Record<string, unknown>).input;
     return typeof input === "string" ? input : undefined;
   } catch {
-    return undefined;
+    // Chat gateways can send custom-tool input as raw text. The Responses bridge dispatches
+    // that text as the freeform input, so an identical bare block is still a duplicate.
+    return argumentsText;
   }
 }
 

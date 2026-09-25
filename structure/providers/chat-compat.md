@@ -325,7 +325,7 @@ entry. `src/adapters/openai-chat/serialized-tool-call-content.ts` recognizes bar
 start of a line outside Markdown fences; inline, quoted and indented examples remain unchanged.
 It holds a possible serialized block, resumes ordinary text delivery when the header cannot match,
 and removes the block only when its function name and
-freeform body match a structured call's parsed `input` in the same response.
+freeform body match a structured call's parsed `input` or exact raw freeform arguments in the same response.
 A block may close a freeform body with a stray `</parameter>` and may omit `</function>`, and one
 newline after the function header is template layout, so MiMo's echoes of those shapes match too
 (#5724). Blocks are read by delimiter scan in linear time: the first `</tool_call>` preceded by
