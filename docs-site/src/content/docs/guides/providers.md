@@ -565,7 +565,11 @@ when a stable upstream session is required.
 **MiMo tool-call echoes.** On OpenCode Go and other Chat Completions routes, a bare
 `<tool_call>` block is hidden when it duplicates one structured call to the same tool
 with the same effective input. If the input differs or several calls could explain
-the block, the markup remains visible. Tool execution still uses the structured call.
+the block, the markup remains visible. On MiMo V2, if the gateway instead sends exactly
+one empty `{}` call for a declared freeform tool and puts its input in a standalone bare
+block, opencodex restores that input to the call and hides the block. Prose, quoted
+examples, ordinary functions, and ambiguous responses remain unchanged. This also handles
+MiMo's malformed `<parameter=` opener at the start of that standalone block.
 
 **OpenCode Zen** (`opencode-zen`) and the keyless **OpenCode Free** preset share
 `https://opencode.ai/zen/v1`. Free models on that gateway often hit a short-window burst

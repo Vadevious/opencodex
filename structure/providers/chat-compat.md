@@ -338,6 +338,13 @@ of a line does the first `</tool_call>` close it, so a body can still carry lite
 If the gateway also prefixes the structured call's JSON
 arguments with the same freeform body, the adapter keeps the JSON suffix only when the block body,
 prefix, and wrapper's `input` value all agree. Mismatched markup and arguments remain byte-exact.
+MiMo V2 Chat routes can instead send an empty `{}` structured call while putting a declared
+freeform tool's input only in a standalone bare block. When the response has no other visible
+text, exactly one structured call, and exactly one block naming the same wire tool, the adapter
+restores the body into `input` and removes the block. It does not promote prose, fenced examples,
+ordinary functions, multiple candidate blocks or calls, or nonempty structured arguments into
+executable input. MiMo's malformed `<parameter=` opener is removed only when it starts that one
+standalone block's body. Streaming recovery is disabled once earlier answer text has been released.
 Two immediately adjacent identical bare blocks, with optional trailing whitespace after the pair,
 are suppressed only when exactly one structured call matches their function name and carries their
 body as `input` or exact raw arguments, or when one doubled `input` can be reduced to that body.
