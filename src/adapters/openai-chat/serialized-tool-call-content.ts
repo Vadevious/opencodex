@@ -1,6 +1,6 @@
 import type { TranslatorBudget } from "../../lib/translator-budget";
 import type { AdapterEvent } from "../../types";
-import { unwrapFreeformToolInput } from "../../responses/apply-patch-envelope";
+import { repairFreeformToolInput } from "../../responses/apply-patch-envelope";
 
 const OPEN_TAG = "<tool_call>";
 const CLOSE_TAG = "</tool_call>";
@@ -31,7 +31,7 @@ export interface SerializedToolCall {
 export interface StructuredToolCallReference {
   names: ReadonlySet<string>;
   argumentsText: string;
-  freeform?: boolean;
+  freeformTool?: { name: string; namespace?: string };
 }
 
 const BLOCK_HEADER = /<tool_call>\s*<function=([^>\r\n]+)>/y;
@@ -325,22 +325,24 @@ export class SerializedToolCallContentBuffer {
 }
 
 /** Reads a wrapped input or raw arguments from a declared freeform tool; neither path rewrites them. */
-function inputFromArguments(argumentsText: string, freeform = false, toolName = ""): string | undefined {
+function inputFromArguments(
+  argumentsText: string,
+  freeformTool?: { name: string; namespace?: string },
+): string | undefined {
   try {
     const parsed = JSON.parse(argumentsText) as unknown;
     const input = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>).input
       : undefined;
     if (typeof input === "string") return input;
-    if (!freeform) return undefined;
-    // The bridge can unwrap alternate fields (for example exec's `cmd`). Such a JSON object
-    // is not an echo of its raw arguments, even when the visible block contains that JSON.
-    return unwrapFreeformToolInput(argumentsText, toolName) === argumentsText ? argumentsText : undefined;
   } catch {
-    // Chat gateways can send custom-tool input as raw text. The Responses bridge dispatches
-    // that text as the freeform input, so an identical bare block is still a duplicate.
-    return freeform ? argumentsText : undefined;
+    // Chat gateways can send custom-tool input as raw text.
   }
+  if (!freeformTool) return undefined;
+  // Match raw input only when the Responses bridge dispatches these same bytes. It can unwrap
+  // alternate fields or repair freeform input using the declared tool's name and namespace.
+  return repairFreeformToolInput(argumentsText, freeformTool.name, freeformTool.namespace) === argumentsText
+    ? argumentsText : undefined;
 }
 
 /** One wrapping newline after the function header is template layout, not input (vLLM `_trim_wrapping_newlines`). */
@@ -357,14 +359,14 @@ function agreesWithRepeatedBlock(
   structured: StructuredToolCallReference,
   repeated: SerializedToolCall,
 ): boolean {
-  const input = structured.names.has(repeated.name) ? inputFromArguments(structured.argumentsText, structured.freeform, repeated.name) : undefined;
+  const input = structured.names.has(repeated.name) ? inputFromArguments(structured.argumentsText, structured.freeformTool) : undefined;
   return input !== undefined && freeformBody(input) === freeformBody(repeated.body);
 }
 
 /** A second call can explain a repeated pair even when its arguments cannot safely be rewritten. */
 function hasDoubledInput(structured: StructuredToolCallReference, repeated: SerializedToolCall): boolean {
   if (!structured.names.has(repeated.name)) return false;
-  const input = inputFromArguments(structured.argumentsText, structured.freeform, repeated.name);
+  const input = inputFromArguments(structured.argumentsText, structured.freeformTool);
   if (input === undefined) return false;
   const body = freeformBody(repeated.body);
   const normalized = freeformBody(input);
@@ -389,7 +391,7 @@ function duplicatedSerializedToolCallRanges(
   return callsIn(text, context).filter(call => {
     const body = freeformBody(call.body);
     return structuredCalls.some(structured => {
-      const input = structured.names.has(call.name) ? inputFromArguments(structured.argumentsText, structured.freeform, call.name) : undefined;
+      const input = structured.names.has(call.name) ? inputFromArguments(structured.argumentsText, structured.freeformTool) : undefined;
       return input !== undefined && freeformBody(input) === body;
     });
   });
@@ -479,7 +481,7 @@ export interface StructuredToolCallInput {
   wireName: string;
   restoredName: string;
   argumentsText: string;
-  freeform?: boolean;
+  freeformTool?: { name: string; namespace?: string };
 }
 
 /**
@@ -496,7 +498,7 @@ export function reconcileStructuredToolCalls(
 ): StructuredToolCallReference[] {
   const references = calls.map(call => {
     const names = new Set([call.wireName, call.restoredName]);
-    return { names, freeform: call.freeform, argumentsText: repairArgumentsDuplicatedBesideSerializedCall(call.argumentsText, names, serializedText) };
+    return { names, freeformTool: call.freeformTool, argumentsText: repairArgumentsDuplicatedBesideSerializedCall(call.argumentsText, names, serializedText) };
   });
   return reduceUnambiguousDoubledInput(references, serializedText);
 }

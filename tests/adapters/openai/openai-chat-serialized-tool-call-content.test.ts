@@ -251,6 +251,38 @@ test("buffered Chat responses preserve JSON markup that the bridge unwraps to a 
   expect(events.filter(event => event.type === "text_delta")).toEqual([{ type: "text_delta", text: block }]);
 });
 
+test.each(["buffered", "streamed"] as const)(
+  "%s Chat responses preserve namespaced JSON markup when exec dispatches its cmd field",
+  async mode => {
+    const argumentsText = '{"cmd":"pwd"}';
+    const name = "functions__exec";
+    const block = `<tool_call><function=${name}>${argumentsText}</parameter></function></tool_call>`;
+    const adapter = withTestTranslatorBudget(createOpenAIChatAdapter(provider));
+    adapter.buildRequest({ modelId: "mimo-v2.6-pro", stream: mode === "streamed", options: {}, context: {
+      messages: [{ role: "user", content: "ping", timestamp: 0 }],
+      tools: [{ ...execTool, namespace: "functions" }],
+    } });
+    const events: AdapterEvent[] = [];
+    if (mode === "buffered") {
+      events.push(...await adapter.parseResponse!(Response.json({
+        choices: [{ message: { content: block, tool_calls: [
+          { id: "call_exec", function: { name, arguments: argumentsText } },
+        ] }, finish_reason: "tool_calls" }],
+      }), createTestTranslatorBudget()));
+    } else {
+      const frames = [
+        { choices: [{ delta: { content: block } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: "call_exec", function: { name, arguments: argumentsText } }] } }] },
+        { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+      ];
+      const body = frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n";
+      for await (const event of adapter.parseStream(new Response(body))) if (event.type !== "heartbeat") events.push(event);
+    }
+    expect(events.filter(event => event.type === "text_delta")).toEqual([{ type: "text_delta", text: block }]);
+    expect(events.filter(event => event.type === "tool_call_delta")).toEqual([{ type: "tool_call_delta", arguments: argumentsText }]);
+  },
+);
+
 test("buffered Chat responses keep matching text for malformed ordinary JSON arguments", async () => {
   const malformed = '{"cmd":"pwd"';
   const content = `<tool_call><function=exec>${malformed}</parameter></function></tool_call>`;

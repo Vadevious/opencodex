@@ -327,8 +327,9 @@ It holds a possible serialized block, resumes ordinary text delivery when the he
 and removes the block only when its function name and
 freeform body match a structured call's parsed `input` or exact raw arguments from a declared
 freeform/custom tool in the same response. Valid JSON primitives, arrays, and objects can be raw
-freeform input too; when the bridge would unwrap an alternate field, the JSON text is not treated
-as the executed input. Malformed JSON on an ordinary function is not raw input.
+freeform input too; the declared tool name and namespace determine whether the bridge would
+unwrap an alternate field, and JSON text that changes on dispatch is not treated as executed input.
+Malformed JSON on an ordinary function is not raw input.
 A block may close a freeform body with a stray `</parameter>` and may omit `</function>`, and one
 newline after the function header is template layout, so MiMo's echoes of those shapes match too
 (#5724). Blocks are read by delimiter scan in linear time: the first `</tool_call>` preceded by
